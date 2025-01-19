@@ -2,14 +2,30 @@ local sequence = {}
 local maxSteps = 32
 local sequenceLength = 16
 local restProbability = 20 -- percentage
+local sequenceProbability = 50 -- Percentage of generating a new sequence
 local currentStep = 1
-local gateDuration = 0.1 -- seconds
+local gateDuration = 200 -- Default to 200ms
+local nextGateDuration = 200 -- Default to 200ms
 local timeSinceGate = 0
-gateActive = false
+local gateActive = false
+local clockPrevState = 0
+local newSequenceGenerated = false
+local baseOctave = 0
+local sequenceCount = 0 -- Track the number of sequences generated
 
-local baseOctave = 4
-local scale = {0, 2, 4, 5, 7, 9, 11} -- Major scale intervals
+local scales = {
+    {0, 2, 4, 5, 7, 9, 11}, -- Major
+    {0, 2, 3, 5, 7, 8, 10}, -- Minor
+    {0, 1, 3, 5, 7, 8, 10}, -- Phrygian
+    {0, 2, 4, 7, 9},        -- Major Pentatonic
+    {0, 3, 5, 7, 10},       -- Minor Pentatonic
+    {0, 1, 5, 7, 8},        -- Miyako Bushi
+    {0, 2, 4, 6, 11}        -- Prometheus
+}
+local scaleIndex = 1 -- Default to Major scale
+local scale = scales[scaleIndex] -- Current scale
 local rootNote = 0 -- C
+local showNewSequenceIndicator = false -- Toggle for sequence indicator
 
 -- Utility functions
 local function generateNote()
@@ -23,90 +39,124 @@ local function generateSequence()
     for i = 1, maxSteps do
         local isRest = math.random(100) <= restProbability
         if isRest then
-            sequence[i] = {pitch = 0, gate = false}
+            sequence[i] = { pitch = 0, gate = false }
         else
-            sequence[i] = {pitch = generateNote(), gate = true}
+            sequence[i] = { pitch = generateNote(), gate = true }
         end
     end
+    sequenceCount = sequenceCount + 1
+    showNewSequenceIndicator = not showNewSequenceIndicator -- Toggle the indicator
 end
 
+-- Generate initial sequence
 generateSequence()
 
 return {
-    name = "Generative Sequencer",
-    author = "Converted",
+    name = "Proteus Generative Sequencer",
+    author = "Originally by Blue Nautilus, ported and mangled by Thorinside",
 
     init = function(self)
         return {
-            inputs = 0,
+            inputs = 1, -- Add clock input
             outputs = 2,
             parameters = {
-                {"Sequence Length", 1, maxSteps, sequenceLength, kInt},
+                {"Sequence Length", 1, 32, sequnceLength, kInt},
                 {"Rest Probability", 0, 100, restProbability, kPercent},
-                {"Gate Duration", 0.01, 1.0, gateDuration, kSeconds},
+                {"Sequence Probability", 0, 100, sequenceProbability, kPercent},
+                {"Gate Duration", 100, 2000, gateDuration, kMilliseconds},
                 {"Base Octave", -2, 5, baseOctave, kInt},
+                {"Scale", 1, 7, scale, kInt}
             }
         }
     end,
 
     step = function(self, dt, inputs)
-        timeSinceGate = timeSinceGate + dt
+        local clockInput = inputs[1] > 2.5 and 1 or 0 -- High signal threshold
 
-        -- Update parameters
+        -- Update parameters dynamically
         sequenceLength = math.floor(self.parameters[1])
         restProbability = math.floor(self.parameters[2])
-        gateDuration = self.parameters[3]
-        baseOctave = math.floor(self.parameters[4])
+        sequenceProbability = math.floor(self.parameters[3])
+        nextGateDuration = math.floor(self.parameters[4])
+        baseOctave = math.floor(self.parameters[5])
+        scaleIndex = math.floor(self.parameters[6])
+        scale = scales[scaleIndex] -- Update scale dynamically
 
-        -- Check gate status
-        if gateActive and timeSinceGate >= gateDuration then
-            gateActive = false
+        -- Ensure gateDuration is correctly initialized
+        if gateDuration <= 0 then
+            gateDuration = nextGateDuration
         end
 
-        -- Move to the next step
-        if not gateActive then
+        -- Detect clock rising edge
+        if clockInput == 1 and clockPrevState == 0 then
             currentStep = currentStep + 1
             if currentStep > sequenceLength then
                 currentStep = 1
-                generateSequence() -- Optionally regenerate the sequence
+                if math.random(100) <= sequenceProbability then
+                    generateSequence() -- Optionally regenerate the sequence
+                end
             end
 
             local stepData = sequence[currentStep]
             if stepData.gate then
                 gateActive = true
                 timeSinceGate = 0
+                gateDuration = nextGateDuration -- Update gate duration
+            else
+                gateActive = false
+            end
+        end
+
+        clockPrevState = clockInput
+
+        -- Update gate duration timing
+        if gateActive then
+            timeSinceGate = timeSinceGate + dt
+            if timeSinceGate >= gateDuration / 1000 then
+                gateActive = false
             end
         end
 
         -- Outputs
         local pitchOut = sequence[currentStep].pitch
-        local gateOut = gateActive and 5 or 0 -- 5V for gate high, 0V for low
+        local gateOut = gateActive and 5 or 0 -- 5V for gate high, 0V for gate low
 
-        return {pitchOut, gateOut}
+        return { pitchOut, gateOut }
     end,
 
     draw = function(self)
-        -- Simple representation of the sequence
-        local xStart = 10
-        local yStart = 10
-        local stepWidth = 4
-        local stepHeight = 10
+        -- Improved representation of the sequence
+        local xStart = 0
+        local yStart = 50 -- Adjusted to free up space for sequence squares
+        local stepWidth = 6
+        local stepHeight = 12
+        local spacing = 2
+
+        -- Display sequence indicator and count
+        if showNewSequenceIndicator then
+            drawText(0, yStart - 15, "*") -- Draw asterisk above the sequence
+        end
+        drawText(0, yStart - 30, "Seq: " .. sequenceCount) -- Display sequence count
 
         for i = 1, sequenceLength do
             local stepData = sequence[i]
-            local x = xStart + (i - 1) * stepWidth
+            local x = xStart + (i - 1) * (stepWidth + spacing)
             local y = yStart
 
             if stepData.gate then
-                drawRectangle(x, y, x + stepWidth, y + stepHeight, 1) -- Draw filled rectangle for active steps
+                drawRectangle(x, y, x + stepWidth, y + stepHeight, 1)
             else
-                drawRectangle(x, y, x + stepWidth, y + stepHeight, 0) -- Draw empty rectangle for rests
+                drawRectangle(x, y, x + stepWidth, y + stepHeight, 0)
             end
 
             if i == currentStep then
-                drawRectangle(x, y - 2, x + stepWidth, y - 1, 1) -- Highlight current step
+                drawRectangle(
+                    x - 1, y - 1,
+                    x + stepWidth + 1,
+                    y + stepHeight + 1,
+                    2
+                )
             end
         end
     end
 }
-
