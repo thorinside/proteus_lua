@@ -17,10 +17,10 @@ local scales = {
     {0, 2, 4, 5, 7, 9, 11}, -- Major
     {0, 2, 3, 5, 7, 8, 10}, -- Minor
     {0, 1, 3, 5, 7, 8, 10}, -- Phrygian
-    {0, 2, 4, 7, 9},        -- Major Pentatonic
-    {0, 3, 5, 7, 10},       -- Minor Pentatonic
-    {0, 1, 5, 7, 8},        -- Miyako Bushi
-    {0, 2, 4, 6, 11}        -- Prometheus
+    {0, 2, 4, 7, 9}, -- Major Pentatonic
+    {0, 3, 5, 7, 10}, -- Minor Pentatonic
+    {0, 1, 5, 7, 8}, -- Miyako Bushi
+    {0, 2, 4, 6, 11} -- Prometheus
 }
 local scaleIndex = 1 -- Default to Major scale
 local scale = scales[scaleIndex] -- Current scale
@@ -39,9 +39,9 @@ local function generateSequence()
     for i = 1, maxSteps do
         local isRest = math.random(100) <= restProbability
         if isRest then
-            sequence[i] = { pitch = 0, gate = false }
+            sequence[i] = {pitch = 0, gate = false}
         else
-            sequence[i] = { pitch = generateNote(), gate = true }
+            sequence[i] = {pitch = generateNote(), gate = true}
         end
     end
     sequenceCount = sequenceCount + 1
@@ -60,12 +60,12 @@ return {
             inputs = 1, -- Add clock input
             outputs = 2,
             parameters = {
-                {"Sequence Length", 1, 32, sequnceLength, kInt},
+                {"Sequence Length", 1, 32, sequenceLength, kInt},
                 {"Rest Probability", 0, 100, restProbability, kPercent},
                 {"Sequence Probability", 0, 100, sequenceProbability, kPercent},
                 {"Gate Duration", 100, 2000, gateDuration, kMilliseconds},
                 {"Base Octave", -2, 5, baseOctave, kInt},
-                {"Scale", 1, 7, scale, kInt}
+                {"Scale", 1, 7, scaleIndex, kInt}
             }
         }
     end,
@@ -83,9 +83,7 @@ return {
         scale = scales[scaleIndex] -- Update scale dynamically
 
         -- Ensure gateDuration is correctly initialized
-        if gateDuration <= 0 then
-            gateDuration = nextGateDuration
-        end
+        if gateDuration <= 0 then gateDuration = nextGateDuration end
 
         -- Detect clock rising edge
         if clockInput == 1 and clockPrevState == 0 then
@@ -121,7 +119,7 @@ return {
         local pitchOut = sequence[currentStep].pitch
         local gateOut = gateActive and 5 or 0 -- 5V for gate high, 0V for gate low
 
-        return { pitchOut, gateOut }
+        return {pitchOut, gateOut}
     end,
 
     draw = function(self)
@@ -150,12 +148,8 @@ return {
             end
 
             if i == currentStep then
-                drawRectangle(
-                    x - 1, y - 1,
-                    x + stepWidth + 1,
-                    y + stepHeight + 1,
-                    2
-                )
+                drawRectangle(x - 1, y - 1, x + stepWidth + 1,
+                              y + stepHeight + 1, 2)
             end
         end
     end
